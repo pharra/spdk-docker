@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2022-2023 Dell Inc, or its subsidiaries.
 
-FROM docker.io/library/fedora:37 as build
+FROM docker.io/library/fedora:37 AS build
 
-ARG TAG=v24.05
+ARG TAG=v25.09-pre
 # Pick an arch that has at least sse 4.2 but does not require newer avx
 # See https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html
 ARG ARCH=x86-64-v2
@@ -13,11 +13,11 @@ RUN dnf install -y git rpm-build diffutils procps-ng pip python3-grpcio python3-
 RUN git clone https://github.com/spdk/spdk --branch ${TAG} --depth 1 /root/spdk
 WORKDIR /root/spdk
 
-RUN git submodule update --init --depth 1 && \
-    ./scripts/pkgdep.sh --rdma
+RUN git submodule update --init --depth 1
+RUN    ./scripts/pkgdep.sh --rdma --uring
 
 RUN DEPS="no" LDFLAGS=" " \
-    ./rpmbuild/rpm.sh --target-arch=${ARCH} --without-uring --with-crypto \
+    ./rpmbuild/rpm.sh --target-arch=${ARCH} --with-uring --with-crypto \
     --without-fio --with-raid5f --with-vhost --without-rbd \
     --with-rdma --without-shared --with-iscsi-initiator --without-vtune --with-vfio-user
 

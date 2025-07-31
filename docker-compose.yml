@@ -14,52 +14,17 @@ services:
       - /dev/shm:/dev/shm
       - /proc:/proc
       - /var/tmp:/var/tmp
-    ports:
-      - "9009:9009"
-      - "4444:4444"
-      - "5555:5555"
+      - /dev/zvol:/dev/zvol
+      - /home/wf/spdk:/home/wf/spdk
     privileged: true
-    networks:
-      - opi
+    network_mode: host
     working_dir: /usr/libexec/spdk/scripts
     command: |
-      sh -x -c 'sync; echo 1 > /proc/sys/vm/drop_caches  && \
-            mkdir -p /mnt/huge && \
-            grep hugetlbfs /proc/mounts || mount -t hugetlbfs nodev /mnt/huge && \
-            echo 1024 > /proc/sys/vm/nr_hugepages && \
-            grep "" /sys/kernel/mm/hugepages/hugepages-*/nr_hugepages && \
-            dd if=/dev/zero of=/tmp/aio_bdev_file bs=512 count=64 && \
-            echo -n NVMeTLSkey-1:01:MDAxMTIyMzM0NDU1NjY3Nzg4OTlhYWJiY2NkZGVlZmZwJEiQ: > /tmp/opikey.txt && \
-            chmod 0600 /tmp/opikey.txt && \
-            /usr/local/bin/spdk_tgt -m 0x1 -s 512 --no-pci -S /var/tmp |& tee /tmp/spdk.log & \
-            for i in `seq 1 10`; do ./rpc.py spdk_get_version && break || sleep 1; done  && \
-            ./rpc.py bdev_malloc_create -b Malloc0 64 512 && \
-            ./rpc.py bdev_malloc_create -b Malloc1 64 512 && \
-            ./rpc.py nvmf_create_transport -t TCP -u 8192 -m 4 -c 0  && \
-            ./rpc.py nvmf_create_transport -t VFIOUSER && \
-            ./rpc.py nvmf_create_subsystem nqn.2016-06.io.spdk:cnode1 -a -s SPDK00000000000001 -d SPDK_Controller1  && \
-            ./rpc.py nvmf_subsystem_allow_any_host nqn.2016-06.io.spdk:cnode1 --disable && \
-            ./rpc.py nvmf_subsystem_add_listener nqn.2016-06.io.spdk:cnode1 -t tcp -a  `hostname -i` -f ipv4 -s 5555 && \
-            ./rpc.py nvmf_subsystem_add_listener nqn.2016-06.io.spdk:cnode1 -t tcp -a  `hostname -i` -f ipv4 -s 4444 --secure-channel && \
-            ./rpc.py nvmf_subsystem_add_host nqn.2016-06.io.spdk:cnode1 nqn.2014-08.org.nvmexpress:uuid:feb98abe-d51f-40c8-b348-2753f3571d3c --psk /tmp/opikey.txt && \
-            ./rpc.py nvmf_subsystem_add_ns nqn.2016-06.io.spdk:cnode1 Malloc0 -n 1  && \
-            ./rpc.py nvmf_subsystem_add_ns nqn.2016-06.io.spdk:cnode1 Malloc1 -n 2  && \
-            ./rpc_http_proxy.py 0.0.0.0 9009 spdkuser spdkpass'
+      sh -x -c '/usr/local/bin/spdk_tgt -m 0x1 -c /home/wf/spdk/rdma_config.json -S /var/tmp'
     healthcheck:
       test: ["CMD-SHELL", "python3 /usr/libexec/spdk/scripts/rpc.py spdk_get_version || exit 1"]
       interval: 6s
       retries: 5
       start_period: 20s
       timeout: 10s
-
-  device:
-    image: docker.io/curlimages/curl:8.5.0
-    depends_on:
-      spdk:
-        condition: service_healthy
-    networks:
-      - opi
-    command: ["--silent", "--fail", "-k", "--user", "spdkuser:spdkpass", "-H", "Content-Type: application/json", "--data", "{\"id\": 1, \"method\": \"bdev_get_bdevs\", \"params\": {\"name\": \"Malloc0\"}}", "http://spdk:9009/"]
-
-networks:
-  opi:
+    restart: always
